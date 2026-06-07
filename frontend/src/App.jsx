@@ -6,6 +6,15 @@ import "./index.css"
 const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api"
 
 export default function App() {
+  // Auth state
+  const [token, setToken] = useState(localStorage.getItem("token") || null)
+  const [username, setUsername] = useState(localStorage.getItem("username") || null)
+  const [authMode, setAuthMode] = useState("login")
+  const [authForm, setAuthForm] = useState({ username: "", password: "" })
+  const [authError, setAuthError] = useState("")
+  const [authLoading, setAuthLoading] = useState(false)
+
+  // App state
   const [docId, setDocId] = useState(null)
   const [filename, setFilename] = useState("")
   const [page, setPage] = useState("upload")
@@ -16,7 +25,7 @@ export default function App() {
   const [chat, setChat] = useState([])
   const [asking, setAsking] = useState(false)
 
-  // Ssummary state
+  // Summary state
   const [summary, setSummary] = useState("")
   const [summarizing, setSummarizing] = useState(false)
 
@@ -35,13 +44,41 @@ export default function App() {
   const [graph, setGraph] = useState(null)
   const [graphLoading, setGraphLoading] = useState(false)
 
+  // Auth handlers
+  const handleAuth = async () => {
+    setAuthError("")
+    setAuthLoading(true)
+    try {
+      const endpoint = authMode === "login" ? "/auth/login" : "/auth/signup"
+      const res = await axios.post(`${API}${endpoint}`, authForm)
+      localStorage.setItem("token", res.data.token)
+      localStorage.setItem("username", res.data.username)
+      setToken(res.data.token)
+      setUsername(res.data.username)
+    } catch (e) {
+      setAuthError(e.response?.data?.detail || "Something went wrong")
+    }
+    setAuthLoading(false)
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem("token")
+    localStorage.removeItem("username")
+    setToken(null)
+    setUsername(null)
+    setDocId(null)
+    setPage("upload")
+  }
+
+  const authHeaders = () => ({ headers: { Authorization: `Bearer ${token}` } })
+
   const handleUpload = async (file) => {
     if (!file || !file.name.endsWith(".pdf")) return alert("Please upload a PDF file")
     setUploading(true)
     const form = new FormData()
     form.append("file", file)
     try {
-      const res = await axios.post(`${API}/upload`, form)
+      const res = await axios.post(`${API}/upload`, form, authHeaders())
       setDocId(res.data.doc_id)
       setFilename(res.data.filename)
       setPage("qa")
@@ -63,7 +100,7 @@ export default function App() {
     setChat(c => [...c, { type: "user", text: q }])
     setAsking(true)
     try {
-      const res = await axios.post(`${API}/ask`, { doc_id: docId, question: q })
+      const res = await axios.post(`${API}/ask`, { doc_id: docId, question: q }, authHeaders())
       setChat(c => [...c, { type: "ai", text: res.data.answer }])
     } catch (e) {
       setChat(c => [...c, { type: "ai", text: "Error getting answer." }])
@@ -75,7 +112,7 @@ export default function App() {
     setSummarizing(true)
     setSummary("")
     try {
-      const res = await axios.post(`${API}/summarize`, { doc_id: docId })
+      const res = await axios.post(`${API}/summarize`, { doc_id: docId }, authHeaders())
       setSummary(res.data.summary)
     } catch (e) {
       setSummary("Error generating summary.")
@@ -89,7 +126,7 @@ export default function App() {
     setAnswers({})
     setScore(null)
     try {
-      const res = await axios.post(`${API}/quiz`, { doc_id: docId, num_questions: 5 })
+      const res = await axios.post(`${API}/quiz`, { doc_id: docId, num_questions: 5 }, authHeaders())
       setQuiz(res.data.questions)
     } catch (e) {
       alert("Error generating quiz.")
@@ -115,7 +152,7 @@ export default function App() {
     setFlashcards([])
     setFlipped({})
     try {
-      const res = await axios.post(`${API}/flashcards`, { doc_id: docId })
+      const res = await axios.post(`${API}/flashcards`, { doc_id: docId }, authHeaders())
       setFlashcards(res.data.flashcards)
     } catch (e) {
       alert("Error generating flashcards.")
@@ -127,12 +164,94 @@ export default function App() {
     setGraphLoading(true)
     setGraph(null)
     try {
-      const res = await axios.post(`${API}/graph`, { doc_id: docId })
+      const res = await axios.post(`${API}/graph`, { doc_id: docId }, authHeaders())
       setGraph(res.data)
     } catch (e) {
       alert("Error generating graph.")
     }
     setGraphLoading(false)
+  }
+
+  // Auth screen
+  if (!token) {
+    return (
+      <div style={{
+        minHeight: "100vh", background: "#0f1117",
+        display: "flex", alignItems: "center", justifyContent: "center"
+      }}>
+        <div style={{
+          background: "#1a1d27", border: "1px solid #2a2d3a",
+          borderRadius: 16, padding: 40, width: 380
+        }}>
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>🧠</div>
+            <h1 style={{ color: "#fff", fontSize: 22, fontWeight: 700 }}>AI Knowledge Assistant</h1>
+            <p style={{ color: "#888", fontSize: 14, marginTop: 8 }}>
+              {authMode === "login" ? "Welcome back!" : "Create your account"}
+            </p>
+          </div>
+
+          {/* Toggle */}
+          <div style={{ display: "flex", background: "#0f1117", borderRadius: 10, padding: 4, marginBottom: 24 }}>
+            {["login", "signup"].map(mode => (
+              <button key={mode} onClick={() => { setAuthMode(mode); setAuthError("") }}
+                style={{
+                  flex: 1, padding: "8px 0", border: "none", borderRadius: 8, cursor: "pointer",
+                  fontWeight: 600, fontSize: 14, transition: "all 0.2s",
+                  background: authMode === mode ? "#7c6af7" : "transparent",
+                  color: authMode === mode ? "#fff" : "#888"
+                }}>
+                {mode === "login" ? "Login" : "Sign Up"}
+              </button>
+            ))}
+          </div>
+
+          {/* Form */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <input
+              placeholder="Username"
+              value={authForm.username}
+              onChange={e => setAuthForm(f => ({ ...f, username: e.target.value }))}
+              style={{
+                background: "#0f1117", border: "1px solid #2a2d3a", borderRadius: 10,
+                padding: "12px 16px", color: "#fff", fontSize: 14, outline: "none"
+              }}
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={authForm.password}
+              onChange={e => setAuthForm(f => ({ ...f, password: e.target.value }))}
+              onKeyDown={e => e.key === "Enter" && handleAuth()}
+              style={{
+                background: "#0f1117", border: "1px solid #2a2d3a", borderRadius: 10,
+                padding: "12px 16px", color: "#fff", fontSize: 14, outline: "none"
+              }}
+            />
+            {authError && (
+              <div style={{ color: "#ff6b6b", fontSize: 13, padding: "8px 12px", background: "#2a1a1a", borderRadius: 8 }}>
+                ⚠️ {authError}
+              </div>
+            )}
+            <button onClick={handleAuth} disabled={authLoading}
+              style={{
+                background: "#7c6af7", color: "#fff", border: "none", borderRadius: 10,
+                padding: "13px", fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 4
+              }}>
+              {authLoading ? "Please wait..." : authMode === "login" ? "Login" : "Create Account"}
+            </button>
+          </div>
+
+          <p style={{ color: "#666", fontSize: 12, textAlign: "center", marginTop: 20 }}>
+            {authMode === "login" ? "Don't have an account? " : "Already have an account? "}
+            <span style={{ color: "#7c6af7", cursor: "pointer" }}
+              onClick={() => { setAuthMode(authMode === "login" ? "signup" : "login"); setAuthError("") }}>
+              {authMode === "login" ? "Sign up" : "Login"}
+            </span>
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -148,6 +267,12 @@ export default function App() {
           <button className={`nav-btn ${page === "flashcards" ? "active" : ""}`} onClick={() => setPage("flashcards")}>🃏 Flashcards</button>
           <button className={`nav-btn ${page === "graph" ? "active" : ""}`} onClick={() => setPage("graph")}>🕸️ Knowledge Graph</button>
         </>}
+        <div style={{ marginTop: "auto", borderTop: "1px solid #2a2d3a", paddingTop: 16 }}>
+          <div style={{ color: "#888", fontSize: 12, marginBottom: 8 }}>👤 {username}</div>
+          <button className="nav-btn" onClick={handleLogout} style={{ color: "#ff6b6b", width: "100%" }}>
+            🚪 Logout
+          </button>
+        </div>
       </div>
 
       {/* Main */}

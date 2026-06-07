@@ -3,7 +3,7 @@ import axios from "axios"
 import ForceGraph2D from "react-force-graph-2d"
 import "./index.css"
 
-const API = "http://127.0.0.1:8000/api"
+const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api"
 
 export default function App() {
   const [docId, setDocId] = useState(null)

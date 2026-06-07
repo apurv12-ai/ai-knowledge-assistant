@@ -8,13 +8,13 @@ const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api"
 export default function App() {
   // Auth state
   const [token, setToken] = useState(localStorage.getItem("token") || null)
-  const [username, setUsername] = useState(localStorage.getItem("username") || null)
+  const [username, setUsername] = useState(localStorage.getItem("username") || "")
   const [authMode, setAuthMode] = useState("login")
   const [authForm, setAuthForm] = useState({ username: "", password: "" })
-  const [authError, setAuthError] = useState("")
   const [authLoading, setAuthLoading] = useState(false)
+  const [authError, setAuthError] = useState("")
 
-  // App state
+  // Doc state
   const [docId, setDocId] = useState(null)
   const [filename, setFilename] = useState("")
   const [page, setPage] = useState("upload")
@@ -46,15 +46,16 @@ export default function App() {
 
   // Auth handlers
   const handleAuth = async () => {
-    setAuthError("")
     setAuthLoading(true)
+    setAuthError("")
     try {
       const endpoint = authMode === "login" ? "/auth/login" : "/auth/signup"
       const res = await axios.post(`${API}${endpoint}`, authForm)
-      localStorage.setItem("token", res.data.token)
-      localStorage.setItem("username", res.data.username)
-      setToken(res.data.token)
-      setUsername(res.data.username)
+      const { token: t, username: u } = res.data
+      localStorage.setItem("token", t)
+      localStorage.setItem("username", u)
+      setToken(t)
+      setUsername(u)
     } catch (e) {
       setAuthError(e.response?.data?.detail || "Something went wrong")
     }
@@ -65,13 +66,19 @@ export default function App() {
     localStorage.removeItem("token")
     localStorage.removeItem("username")
     setToken(null)
-    setUsername(null)
+    setUsername("")
     setDocId(null)
+    setChat([])
+    setSummary("")
+    setQuiz([])
+    setFlashcards([])
+    setGraph(null)
     setPage("upload")
   }
 
   const authHeaders = () => ({ headers: { Authorization: `Bearer ${token}` } })
 
+  // Upload handler
   const handleUpload = async (file) => {
     if (!file || !file.name.endsWith(".pdf")) return alert("Please upload a PDF file")
     setUploading(true)
@@ -88,11 +95,12 @@ export default function App() {
       setFlashcards([])
       setGraph(null)
     } catch (e) {
-      alert("Upload failed: " + e.message)
+      alert("Upload failed: " + (e.response?.data?.detail || e.message))
     }
     setUploading(false)
   }
 
+  // Q&A handler
   const handleAsk = async () => {
     if (!question.trim()) return
     const q = question
@@ -108,6 +116,17 @@ export default function App() {
     setAsking(false)
   }
 
+  // Voice input handler
+  const handleVoice = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) return alert("Voice not supported in this browser. Use Chrome.")
+    const recognition = new SpeechRecognition()
+    recognition.lang = "en-US"
+    recognition.onresult = (e) => setQuestion(e.results[0][0].transcript)
+    recognition.start()
+  }
+
+  // Summary handler
   const handleSummarize = async () => {
     setSummarizing(true)
     setSummary("")
@@ -120,6 +139,7 @@ export default function App() {
     setSummarizing(false)
   }
 
+  // Quiz handlers
   const handleQuiz = async () => {
     setQuizLoading(true)
     setQuiz([])
@@ -147,6 +167,7 @@ export default function App() {
     setScore(correct)
   }
 
+  // Flashcard handler
   const handleFlashcards = async () => {
     setFlashLoading(true)
     setFlashcards([])
@@ -160,6 +181,7 @@ export default function App() {
     setFlashLoading(false)
   }
 
+  // Graph handler
   const handleGraph = async () => {
     setGraphLoading(true)
     setGraph(null)
@@ -172,110 +194,133 @@ export default function App() {
     setGraphLoading(false)
   }
 
-  // Auth screen
+  // ── AUTH SCREEN ──
   if (!token) {
     return (
       <div style={{
-        minHeight: "100vh", background: "#0f1117",
-        display: "flex", alignItems: "center", justifyContent: "center"
+        minHeight: "100vh", background: "#0f1117", display: "flex",
+        alignItems: "center", justifyContent: "center"
       }}>
         <div style={{
-          background: "#1a1d27", border: "1px solid #2a2d3a",
-          borderRadius: 16, padding: 40, width: 380
+          background: "#1a1d27", border: "1px solid #2a2d3a", borderRadius: 16,
+          padding: 40, width: 360
         }}>
-          <div style={{ textAlign: "center", marginBottom: 32 }}>
-            <div style={{ fontSize: 40, marginBottom: 8 }}>🧠</div>
-            <h1 style={{ color: "#fff", fontSize: 22, fontWeight: 700 }}>AI Knowledge Assistant</h1>
-            <p style={{ color: "#888", fontSize: 14, marginTop: 8 }}>
-              {authMode === "login" ? "Welcome back!" : "Create your account"}
-            </p>
-          </div>
+          <div style={{ fontSize: 32, textAlign: "center", marginBottom: 8 }}>🧠</div>
+          <h1 style={{ color: "#fff", fontSize: 20, textAlign: "center", marginBottom: 4 }}>
+            AI Knowledge Assistant
+          </h1>
+          <p style={{ color: "#888", fontSize: 13, textAlign: "center", marginBottom: 28 }}>
+            {authMode === "login" ? "Welcome back!" : "Create your account"}
+          </p>
 
-          {/* Toggle */}
-          <div style={{ display: "flex", background: "#0f1117", borderRadius: 10, padding: 4, marginBottom: 24 }}>
-            {["login", "signup"].map(mode => (
-              <button key={mode} onClick={() => { setAuthMode(mode); setAuthError("") }}
-                style={{
-                  flex: 1, padding: "8px 0", border: "none", borderRadius: 8, cursor: "pointer",
-                  fontWeight: 600, fontSize: 14, transition: "all 0.2s",
-                  background: authMode === mode ? "#7c6af7" : "transparent",
-                  color: authMode === mode ? "#fff" : "#888"
-                }}>
-                {mode === "login" ? "Login" : "Sign Up"}
-              </button>
-            ))}
-          </div>
-
-          {/* Form */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ color: "#aaa", fontSize: 12, marginBottom: 6 }}>Username</div>
             <input
-              placeholder="Username"
+              style={{
+                width: "100%", background: "#0f1117", border: "1px solid #2a2d3a",
+                borderRadius: 8, padding: "10px 14px", color: "#fff", fontSize: 14,
+                outline: "none", boxSizing: "border-box"
+              }}
+              placeholder="Enter username"
               value={authForm.username}
               onChange={e => setAuthForm(f => ({ ...f, username: e.target.value }))}
-              style={{
-                background: "#0f1117", border: "1px solid #2a2d3a", borderRadius: 10,
-                padding: "12px 16px", color: "#fff", fontSize: 14, outline: "none"
-              }}
+              onKeyDown={e => e.key === "Enter" && handleAuth()}
             />
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ color: "#aaa", fontSize: 12, marginBottom: 6 }}>Password</div>
             <input
               type="password"
-              placeholder="Password"
+              style={{
+                width: "100%", background: "#0f1117", border: "1px solid #2a2d3a",
+                borderRadius: 8, padding: "10px 14px", color: "#fff", fontSize: 14,
+                outline: "none", boxSizing: "border-box"
+              }}
+              placeholder="Enter password (min 6 chars)"
               value={authForm.password}
               onChange={e => setAuthForm(f => ({ ...f, password: e.target.value }))}
               onKeyDown={e => e.key === "Enter" && handleAuth()}
-              style={{
-                background: "#0f1117", border: "1px solid #2a2d3a", borderRadius: 10,
-                padding: "12px 16px", color: "#fff", fontSize: 14, outline: "none"
-              }}
             />
-            {authError && (
-              <div style={{ color: "#ff6b6b", fontSize: 13, padding: "8px 12px", background: "#2a1a1a", borderRadius: 8 }}>
-                ⚠️ {authError}
-              </div>
-            )}
-            <button onClick={handleAuth} disabled={authLoading}
-              style={{
-                background: "#7c6af7", color: "#fff", border: "none", borderRadius: 10,
-                padding: "13px", fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 4
-              }}>
-              {authLoading ? "Please wait..." : authMode === "login" ? "Login" : "Create Account"}
-            </button>
           </div>
 
-          <p style={{ color: "#666", fontSize: 12, textAlign: "center", marginTop: 20 }}>
+          {authError && (
+            <div style={{
+              background: "#2a1a1a", border: "1px solid #f44336", borderRadius: 8,
+              padding: "10px 14px", color: "#ff8a80", fontSize: 13, marginBottom: 16
+            }}>
+              {authError}
+            </div>
+          )}
+
+          <button
+            className="btn"
+            style={{ width: "100%", padding: "12px", marginBottom: 14 }}
+            onClick={handleAuth}
+            disabled={authLoading}
+          >
+            {authLoading ? "Please wait..." : authMode === "login" ? "Login" : "Create Account"}
+          </button>
+
+          <div style={{ textAlign: "center", fontSize: 13, color: "#888" }}>
             {authMode === "login" ? "Don't have an account? " : "Already have an account? "}
-            <span style={{ color: "#7c6af7", cursor: "pointer" }}
-              onClick={() => { setAuthMode(authMode === "login" ? "signup" : "login"); setAuthError("") }}>
+            <span
+              style={{ color: "#7c6af7", cursor: "pointer" }}
+              onClick={() => { setAuthMode(authMode === "login" ? "signup" : "login"); setAuthError("") }}
+            >
               {authMode === "login" ? "Sign up" : "Login"}
             </span>
-          </p>
+          </div>
         </div>
       </div>
     )
   }
 
+  // ── MAIN APP ──
   return (
     <div className="app">
       {/* Sidebar */}
       <div className="sidebar">
         <h1>🧠 AI Knowledge Assistant</h1>
-        <button className={`nav-btn ${page === "upload" ? "active" : ""}`} onClick={() => setPage("upload")}>📤 Upload PDF</button>
-        {docId && <>
-          <button className={`nav-btn ${page === "qa" ? "active" : ""}`} onClick={() => setPage("qa")}>💬 Ask Questions</button>
-          <button className={`nav-btn ${page === "summary" ? "active" : ""}`} onClick={() => setPage("summary")}>📋 Summary</button>
-          <button className={`nav-btn ${page === "quiz" ? "active" : ""}`} onClick={() => setPage("quiz")}>🧪 Quiz</button>
-          <button className={`nav-btn ${page === "flashcards" ? "active" : ""}`} onClick={() => setPage("flashcards")}>🃏 Flashcards</button>
-          <button className={`nav-btn ${page === "graph" ? "active" : ""}`} onClick={() => setPage("graph")}>🕸️ Knowledge Graph</button>
-        </>}
-        <div style={{ marginTop: "auto", borderTop: "1px solid #2a2d3a", paddingTop: 16 }}>
-          <div style={{ color: "#888", fontSize: 12, marginBottom: 8 }}>👤 {username}</div>
-          <button className="nav-btn" onClick={handleLogout} style={{ color: "#ff6b6b", width: "100%" }}>
-            🚪 Logout
-          </button>
+
+        <div style={{
+          background: "#0f1117", border: "1px solid #2a2d3a", borderRadius: 8,
+          padding: "8px 12px", marginBottom: 8, fontSize: 13
+        }}>
+          <span style={{ color: "#888" }}>Logged in as </span>
+          <span style={{ color: "#7c6af7", fontWeight: 600 }}>{username}</span>
         </div>
+
+        <button className="nav-btn" onClick={handleLogout} style={{ color: "#ff6b6b", marginBottom: 8 }}>
+          🚪 Logout
+        </button>
+
+        <div style={{ height: 1, background: "#2a2d3a", margin: "8px 0" }} />
+
+        <button className={`nav-btn ${page === "upload" ? "active" : ""}`} onClick={() => setPage("upload")}>
+          📤 Upload PDF
+        </button>
+
+        {docId && <>
+          <button className={`nav-btn ${page === "qa" ? "active" : ""}`} onClick={() => setPage("qa")}>
+            💬 Ask Questions
+          </button>
+          <button className={`nav-btn ${page === "summary" ? "active" : ""}`} onClick={() => setPage("summary")}>
+            📋 Summary
+          </button>
+          <button className={`nav-btn ${page === "quiz" ? "active" : ""}`} onClick={() => setPage("quiz")}>
+            🧪 Quiz
+          </button>
+          <button className={`nav-btn ${page === "flashcards" ? "active" : ""}`} onClick={() => setPage("flashcards")}>
+            🃏 Flashcards
+          </button>
+          <button className={`nav-btn ${page === "graph" ? "active" : ""}`} onClick={() => setPage("graph")}>
+            🕸️ Knowledge Graph
+          </button>
+        </>}
       </div>
 
-      {/* Main */}
+      {/* Main Content */}
       <div className="main">
 
         {/* Upload Page */}
@@ -317,6 +362,7 @@ export default function App() {
               <input value={question} onChange={e => setQuestion(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleAsk()}
                 placeholder="Ask anything about your document..." />
+              <button className="btn secondary" onClick={handleVoice} title="Voice input">🎙️</button>
               <button className="btn" onClick={handleAsk} disabled={asking || !question.trim()}>Ask</button>
             </div>
           </>

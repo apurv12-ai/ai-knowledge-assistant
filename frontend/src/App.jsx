@@ -1,5 +1,6 @@
 import { useState } from "react"
 import axios from "axios"
+import ForceGraph2D from "react-force-graph-2d"
 import "./index.css"
 
 const API = "http://127.0.0.1:8000/api"
@@ -15,7 +16,7 @@ export default function App() {
   const [chat, setChat] = useState([])
   const [asking, setAsking] = useState(false)
 
-  // Summary state
+  // Ssummary state
   const [summary, setSummary] = useState("")
   const [summarizing, setSummarizing] = useState(false)
 
@@ -29,6 +30,10 @@ export default function App() {
   const [flashcards, setFlashcards] = useState([])
   const [flashLoading, setFlashLoading] = useState(false)
   const [flipped, setFlipped] = useState({})
+
+  // Graph state
+  const [graph, setGraph] = useState(null)
+  const [graphLoading, setGraphLoading] = useState(false)
 
   const handleUpload = async (file) => {
     if (!file || !file.name.endsWith(".pdf")) return alert("Please upload a PDF file")
@@ -44,6 +49,7 @@ export default function App() {
       setSummary("")
       setQuiz([])
       setFlashcards([])
+      setGraph(null)
     } catch (e) {
       alert("Upload failed: " + e.message)
     }
@@ -117,6 +123,18 @@ export default function App() {
     setFlashLoading(false)
   }
 
+  const handleGraph = async () => {
+    setGraphLoading(true)
+    setGraph(null)
+    try {
+      const res = await axios.post(`${API}/graph`, { doc_id: docId })
+      setGraph(res.data)
+    } catch (e) {
+      alert("Error generating graph.")
+    }
+    setGraphLoading(false)
+  }
+
   return (
     <div className="app">
       {/* Sidebar */}
@@ -128,6 +146,7 @@ export default function App() {
           <button className={`nav-btn ${page === "summary" ? "active" : ""}`} onClick={() => setPage("summary")}>📋 Summary</button>
           <button className={`nav-btn ${page === "quiz" ? "active" : ""}`} onClick={() => setPage("quiz")}>🧪 Quiz</button>
           <button className={`nav-btn ${page === "flashcards" ? "active" : ""}`} onClick={() => setPage("flashcards")}>🃏 Flashcards</button>
+          <button className={`nav-btn ${page === "graph" ? "active" : ""}`} onClick={() => setPage("graph")}>🕸️ Knowledge Graph</button>
         </>}
       </div>
 
@@ -191,13 +210,13 @@ export default function App() {
               <div className="answer-box">
                 <div className="label">Summary</div>
                 <div className="summary-text"
-  dangerouslySetInnerHTML={{
-    __html: summary
-      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-      .replace(/^\* /gm, "• ")
-      .replace(/\n/g, "<br/>")
-  }}
-/>
+                  dangerouslySetInnerHTML={{
+                    __html: summary
+                      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+                      .replace(/^\* /gm, "• ")
+                      .replace(/\n/g, "<br/>")
+                  }}
+                />
               </div>
             )}
           </>
@@ -267,6 +286,54 @@ export default function App() {
             )}
           </>
         )}
+
+        {/* Knowledge Graph Page */}
+        {page === "graph" && (
+          <>
+            <div className="page-title">Knowledge Graph</div>
+            {docId && <div className="doc-badge">📄 {filename}</div>}
+            {!graph && !graphLoading && (
+              <button className="btn" onClick={handleGraph}>Generate Knowledge Graph</button>
+            )}
+            {graphLoading && <div className="loading"><div className="spinner" /> Extracting concepts and building graph...</div>}
+            {graph && (
+              <>
+                <p style={{ color: "#888", fontSize: 13, marginBottom: 16 }}>
+                  {graph.nodes.length} concepts · {graph.links.length} relationships · drag to explore
+                </p>
+                <div style={{ border: "1px solid #2a2d3a", borderRadius: 12, overflow: "hidden", height: 500 }}>
+                  <ForceGraph2D
+                    graphData={graph}
+                    width={800}
+                    height={500}
+                    backgroundColor="#0f1117"
+                    nodeLabel="id"
+                    nodeAutoColorBy="group"
+                    nodeCanvasObject={(node, ctx, globalScale) => {
+                      const label = node.id
+                      const fontSize = 12 / globalScale
+                      ctx.font = `${fontSize}px Sans-Serif`
+                      ctx.fillStyle = node.color
+                      ctx.beginPath()
+                      ctx.arc(node.x, node.y, 6, 0, 2 * Math.PI)
+                      ctx.fill()
+                      ctx.fillStyle = "#ffffff"
+                      ctx.textAlign = "center"
+                      ctx.textBaseline = "middle"
+                      ctx.fillText(label, node.x, node.y + 12)
+                    }}
+                    linkLabel="label"
+                    linkColor={() => "#3a3d4a"}
+                    linkDirectionalArrowLength={4}
+                    linkDirectionalArrowRelPos={1}
+                  />
+                </div>
+                <button className="btn secondary" style={{ marginTop: 12 }} onClick={handleGraph}>Regenerate</button>
+              </>
+            )}
+          </>
+        )}
+
       </div>
     </div>
   )
